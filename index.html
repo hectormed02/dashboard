@@ -7,7 +7,7 @@
 
 <!-- ============================================================
      LIBRERÍAS EXTERNAS (CDN)
-     - SheetJS: lee el .xlsx directamente desde GitHub RAW
+     - SheetJS: lee el .xlsx directamente desde Google Sheets
      - Chart.js: gráficos interactivos
 ============================================================ -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -17,21 +17,20 @@
 <style>
 /* ============================================================
    SISTEMA DE DISEÑO — colores de marca Entel Perú
-   (muestreados del logotipo oficial)
 ============================================================ */
 :root{
-  --entel-navy:   #001780;   /* azul Entel — dato principal */
-  --entel-navy-2: #2A44C8;   /* azul secundario para series */
-  --entel-orange: #FF3D00;   /* naranja Entel — acento / real */
+  --entel-navy:   #001780;   
+  --entel-navy-2: #2A44C8;   
+  --entel-orange: #FF3D00;   
   --entel-orange-soft:#FFE3D9;
-  --bg:      #EEF1F7;        /* fondo tipo Power BI */
-  --card:    #FFFFFF;        /* paneles */
-  --line:    #DEE3F0;        /* bordes */
-  --ink:     #1B2340;        /* texto principal */
-  --ink-dim: #6E7899;        /* texto secundario */
-  --green:   #0E9F6E;        /* válidas / cumplido */
-  --amber:   #F59E0B;        /* en proceso */
-  --red:     #E02424;        /* anuladas / riesgo */
+  --bg:      #EEF1F7;        
+  --card:    #FFFFFF;        
+  --line:    #DEE3F0;        
+  --ink:     #1B2340;        
+  --ink-dim: #6E7899;        
+  --green:   #0E9F6E;        
+  --amber:   #F59E0B;        
+  --red:     #E02424;        
   --font-brand:"Nunito","Segoe UI",sans-serif;
   --font-body:"Segoe UI",system-ui,sans-serif;
 }
@@ -213,7 +212,7 @@ footer{text-align:center;color:var(--ink-dim);font-size:11px;padding:18px}
   <div class="titulo">DASHBOARD GPON B2B<small>VENTAS · PIPELINE · PROYECCIÓN</small></div>
   <span class="badge-mes" id="badge-mes">Cargando…</span>
   <div class="header-right">
-    <span id="estado-datos"><span class="dot"></span><span id="estado-texto">Conectando a GitHub…</span></span>
+    <span id="estado-datos"><span class="dot"></span><span id="estado-texto">Conectando a Google Sheets…</span></span>
     <button class="btn" id="btn-actualizar">⟳ Actualizar datos</button>
   </div>
 </header>
@@ -232,7 +231,7 @@ footer{text-align:center;color:var(--ink-dim);font-size:11px;padding:18px}
 
 <div class="layout">
 
-  <!-- ============ SIDEBAR DE FILTROS (aplica a todas las pestañas) ============ -->
+  <!-- ============ SIDEBAR DE FILTROS ============ -->
   <aside>
     <div class="slicer" id="sl-gestor">
       <h4>Gestor <span class="limpiar">✕ limpiar</span></h4>
@@ -378,18 +377,17 @@ footer{text-align:center;color:var(--ink-dim);font-size:11px;padding:18px}
 </div>
 
 <div id="toast"></div>
-<footer>Dashboard GPON B2B · Entel Perú · Datos en vivo desde GitHub · Última lectura: <span id="ultima-lectura">—</span></footer>
+<footer>Dashboard GPON B2B · Entel Perú · Datos en vivo desde Google Sheets · Última lectura: <span id="ultima-lectura">—</span></footer>
 
 <script>
 /* ══════════════════════════════════════════════════════════════
-   1. CONFIGURACIÓN — lo único que necesitas editar
+   1. CONFIGURACIÓN
 ══════════════════════════════════════════════════════════════ */
 const CONFIG = {
-  // URL RAW de tu Excel en GitHub. Formato:
-  // https://raw.githubusercontent.com/USUARIO/REPO/main/RUTA/ARCHIVO.xlsx
-  EXCEL_URL: "https://raw.githubusercontent.com/TU_USUARIO/TU_REPO/main/REPORTE_GPON.xlsx",
+  // Enlace directo de exportación de Google Sheets
+  EXCEL_URL: "https://docs.google.com/spreadsheets/d/1I-ZBwnY3P37HsAL5ZnimHopBZPP683gyj21YQRl9YeI/export?format=xlsx",
 
-  // Cada cuántos minutos verificar si el archivo cambió en GitHub (0 = desactivado)
+  // Cada cuántos minutos verificar si el archivo cambió (0 = desactivado)
   AUTO_REFRESH_MIN: 5,
 
   // Nombres (parciales) de las hojas a leer — robusto a emojis y espacios
@@ -422,8 +420,6 @@ const colorEstado = e => COLOR_ESTADO[e] || "#9AA4C4";
 
 /* ══════════════════════════════════════════════════════════════
    2. ESTADO GLOBAL
-   Filtros multi-selección (estilo slicer Power BI):
-   un Set vacío significa "todos".
 ══════════════════════════════════════════════════════════════ */
 const state = {
   registros: [],
@@ -432,7 +428,6 @@ const state = {
   filtros: { gestor:new Set(), supervisor:new Set(), asesor:new Set(), estado:new Set() },
   orden: { col:"fechaIngreso", asc:false },
   tabActiva: "dashboard",
-  etag: null,
   charts: {},
 };
 
@@ -448,14 +443,13 @@ const pct = n => (n*100).toFixed(0) + "%";
 async function cargarDatos(mostrarToast = false){
   const btn = $("btn-actualizar");
   btn.disabled = true;
-  $("estado-texto").textContent = "Leyendo Excel desde GitHub…";
+  $("estado-texto").textContent = "Leyendo datos desde Google Sheets…";
   $("error-banner").style.display = "none";
   try{
-    // Cache-buster: garantiza que GitHub RAW no devuelva una versión en caché
+    // Cache-buster para obligar a descargar la versión más reciente
     const url = CONFIG.EXCEL_URL + (CONFIG.EXCEL_URL.includes("?") ? "&" : "?") + "t=" + Date.now();
     const resp = await fetch(url, { cache:"no-store" });
-    if(!resp.ok) throw new Error(`GitHub respondió ${resp.status} — verifica que la URL RAW sea correcta y el repo sea público.`);
-    state.etag = resp.headers.get("ETag");
+    if(!resp.ok) throw new Error(`El documento no es público o la URL falló (Código: ${resp.status}). Asegúrate de compartir el Google Sheets como "Cualquier persona con el enlace".`);
 
     const buf = await resp.arrayBuffer();
     const wb = XLSX.read(buf, { cellDates:true });
@@ -469,12 +463,12 @@ async function cargarDatos(mostrarToast = false){
     const ahora = new Date().toLocaleTimeString("es-PE");
     $("estado-texto").textContent = `Datos en vivo · ${state.registros.length} registros`;
     $("ultima-lectura").textContent = ahora;
-    if(mostrarToast) toast(`✔ Datos actualizados desde GitHub (${ahora})`);
+    if(mostrarToast) toast(`✔ Datos actualizados desde Google Sheets (${ahora})`);
   }catch(err){
     console.error(err);
     $("estado-texto").textContent = "Error de conexión";
     const b = $("error-banner");
-    b.textContent = "⚠ No se pudo cargar el Excel: " + err.message;
+    b.textContent = "⚠ No se pudo cargar el archivo: " + err.message;
     b.style.display = "block";
   }finally{
     btn.disabled = false;
@@ -486,8 +480,7 @@ function buscarHoja(wb, fragmento){
   return wb.SheetNames.find(n => n.toUpperCase().includes(fragmento.toUpperCase()));
 }
 
-/* Lee la hoja BBDD mapeando columnas POR ENCABEZADO (no por posición),
-   así el dashboard sigue funcionando si insertas columnas nuevas. */
+/* Lee la hoja BBDD mapeando columnas POR ENCABEZADO */
 function parsearBBDD(wb){
   const nombre = buscarHoja(wb, CONFIG.HOJA_BBDD);
   if(!nombre) throw new Error(`No se encontró la hoja "${CONFIG.HOJA_BBDD}" en el archivo.`);
@@ -522,8 +515,7 @@ function parsearBBDD(wb){
     }));
 }
 
-/* Lee los objetivos mensuales por equipo desde la hoja 🎯 OBJETIVOS EQUIPOS.
-   Toma la primera columna (equipo) y la segunda (OBJ MENSUAL). */
+/* Lee los objetivos mensuales por equipo desde la hoja 🎯 OBJETIVOS EQUIPOS. */
 function parsearObjetivos(wb){
   state.objetivos = { ...CONFIG.OBJETIVOS_FALLBACK };
   const nombre = buscarHoja(wb, CONFIG.HOJA_OBJETIVOS);
@@ -556,7 +548,6 @@ function detectarMes(){
 
 /* ══════════════════════════════════════════════════════════════
    4. SLICERS (filtros multi-selección con casillas, en cascada)
-   Aplican de forma global a TODAS las pestañas.
 ══════════════════════════════════════════════════════════════ */
 const SLICERS = [
   { id:"sl-gestor",     campo:"gestor" },
@@ -565,8 +556,6 @@ const SLICERS = [
   { id:"sl-estado",     campo:"estado" },
 ];
 
-/* Registros que pasan todos los filtros EXCEPTO el del campo indicado
-   (para que cada slicer muestre sus opciones en cascada) */
 function filtrar(exceptoCampo = null){
   return state.registros.filter(r =>
     SLICERS.every(s =>
@@ -583,7 +572,6 @@ function construirSlicers(){
     const base = filtrar(s.campo);
     const conteo = new Map();
     base.forEach(r => conteo.set(r[s.campo], (conteo.get(r[s.campo]) || 0) + 1));
-    // conserva selecciones aunque ya no tengan registros visibles
     state.filtros[s.campo].forEach(v => { if(!conteo.has(v)) conteo.set(v, 0); });
     const valores = [...conteo.keys()].sort((a,b) => String(a).localeCompare(String(b), "es"));
 
@@ -620,7 +608,6 @@ const esValida = r => CONFIG.ESTADOS_VALIDOS.includes(r.estado);
 const esAnulada = r => CONFIG.ESTADOS_ANULADOS.includes(r.estado);
 const enProceso = r => !esValida(r) && !esAnulada(r);
 
-/* Regla oficial del reporte: CONV% = válidas / TOTAL de ventas del asesor/equipo */
 function calcularKPIs(regs){
   const validas = regs.filter(esValida);
   return {
@@ -633,10 +620,6 @@ function calcularKPIs(regs){
   };
 }
 
-/* Objetivo aplicable según el filtro activo:
-   - sin filtros de equipo/asesor → suma de todos los objetivos
-   - equipos seleccionados → suma de los objetivos de esos equipos
-   - asesores seleccionados → no hay objetivo individual en la hoja: se omite */
 function objetivoActual(){
   const f = state.filtros;
   if(f.asesor.size) return null;
@@ -649,10 +632,6 @@ function objetivoActual(){
   return Object.values(state.objetivos).reduce((a,b) => a+b, 0);
 }
 
-/* Serie acumulada de ventas válidas por día del mes + proyección.
-   Método run-rate: ritmo diario promedio hasta la fecha de corte
-   (HOY si el mes sigue abierto; el último día si ya cerró).
-   proyección = ritmo_diario × días_del_mes */
 function calcularProyeccion(regs){
   const { year, month, dias } = state.mesReporte;
   const hoy = new Date();
@@ -682,7 +661,6 @@ function calcularProyeccion(regs){
            proyeccionFin: Math.round(ritmo * dias), ritmoDiario: ritmo };
 }
 
-/* Agrupa registros por una clave y calcula KPIs de cada grupo */
 function agruparPor(regs, clave){
   const mapa = new Map();
   regs.forEach(r => {
@@ -696,9 +674,6 @@ function agruparPor(regs, clave){
 
 /* ══════════════════════════════════════════════════════════════
    6. SISTEMA DE PESTAÑAS
-   Cada pestaña declara sus funciones de render. Al cambiar de
-   pestaña o de filtro solo se dibuja lo visible (evita que
-   Chart.js renderice lienzos ocultos con tamaño 0).
 ══════════════════════════════════════════════════════════════ */
 const TABS = {
   dashboard:  () => { const r = registrosFiltrados(); renderKPIs(r); renderEstados(r); renderGestores(r); renderEvolucionMini(r); },
@@ -885,7 +860,6 @@ function renderTablaSupervisores(regs){
 function renderObjetivos(regs){
   const grupos = agruparPor(regs, "supervisor");
   const porEquipo = new Map(grupos.map(g => [g.nombre, g]));
-  // incluye equipos con objetivo aunque no tengan registros visibles
   const nombres = [...new Set([...Object.keys(state.objetivos), ...porEquipo.keys()])]
     .sort((a,b) => (state.objetivos[b] || 0) - (state.objetivos[a] || 0));
 
@@ -927,7 +901,6 @@ function renderObjetivos(regs){
     { t:"Avance", v:pTot === null ? "—" : pct(pTot), s:"real / objetivo", c: pTot >= 1 ? ENTEL.green : pTot >= .7 ? ENTEL.amber : ENTEL.red },
   ]);
 
-  // gráfico horizontal objetivo vs real
   const conObjetivo = nombres.filter(n => state.objetivos[n]);
   dibujar("ch-objetivos", {
     type:"bar",
@@ -1012,7 +985,6 @@ function renderProyeccionTab(regs){
 
   dibujarEvolucion("ch-proyeccion", proy, obj);
 
-  // tabla de proyección por equipo
   const grupos = agruparPor(regs, "supervisor");
   $("tabla-proyeccion").innerHTML = grupos.map(g => {
     const pg = calcularProyeccion(g.items);
@@ -1029,7 +1001,6 @@ function renderProyeccionTab(regs){
   }).join("");
 }
 
-/* Gráfico de evolución acumulada + proyección (reutilizado en 2 pestañas) */
 function dibujarEvolucion(canvasId, proy, obj){
   const labels = Array.from({length: proy.dias}, (_,i) => i+1);
   const datasets = [
@@ -1049,7 +1020,6 @@ function dibujarEvolucion(canvasId, proy, obj){
   });
 }
 
-/* Crea o reemplaza un gráfico Chart.js sin fugas de memoria */
 function dibujar(id, cfg){
   if(state.charts[id]) state.charts[id].destroy();
   state.charts[id] = new Chart($(id), cfg);
@@ -1063,18 +1033,13 @@ function toast(msg){
 
 /* ══════════════════════════════════════════════════════════════
    8. ACTUALIZACIÓN AUTOMÁTICA
-   Cada AUTO_REFRESH_MIN minutos se hace una petición ligera (HEAD)
-   y se compara el ETag: si GitHub reporta un archivo distinto,
-   se recargan los datos sin intervención del usuario.
 ══════════════════════════════════════════════════════════════ */
 async function verificarCambios(){
+  // Como Google Sheets no devuelve un ETag predecible de la misma forma que Github,
+  // ejecutamos una recarga limpia cada cierto tiempo.
   try{
-    const resp = await fetch(CONFIG.EXCEL_URL + "?t=" + Date.now(), { method:"HEAD", cache:"no-store" });
-    const etag = resp.headers.get("ETag");
-    if(etag && state.etag && etag !== state.etag){
-      toast("⟳ Se detectó una nueva versión del Excel — actualizando…");
-      await cargarDatos(true);
-    }
+    toast("⟳ Actualizando datos desde Google Sheets...");
+    await cargarDatos(false);
   }catch(e){ /* silencioso: reintenta en el próximo ciclo */ }
 }
 
