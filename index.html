@@ -7,7 +7,7 @@
 
 <!-- ============================================================
      LIBRERÍAS EXTERNAS (CDN)
-     - SheetJS: lee el .xlsx directamente desde Google Sheets
+     - SheetJS: lee los datos estructurados directamente de Google Sheets
      - Chart.js: gráficos interactivos
 ============================================================ -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -313,11 +313,11 @@ footer{text-align:center;color:var(--ink-dim);font-size:11px;padding:18px}
       </div>
     </section>
 
-    <!-- ── PESTAÑA 4: OBJETIVOS (leídos del Excel) ── -->
+    <!-- ── PESTAÑA 4: OBJETIVOS (leídos de Google Sheets) ── -->
     <section class="tab" id="tab-objetivos">
       <div class="kpis" id="kpis-objetivos"></div>
       <div class="panel">
-        <h3>Objetivos mensuales por equipo <span class="nota">— leídos de la hoja 🎯 OBJETIVOS EQUIPOS</span></h3>
+        <h3>Objetivos mensuales por equipo <span class="nota">— leídos de la pestaña 🎯 OBJETIVOS EQUIPOS</span></h3>
         <div class="tabla-scroll">
           <table>
             <thead><tr>
@@ -381,20 +381,20 @@ footer{text-align:center;color:var(--ink-dim);font-size:11px;padding:18px}
 
 <script>
 /* ══════════════════════════════════════════════════════════════
-   1. CONFIGURACIÓN
+   1. CONFIGURACIÓN EXCLUSIVA PARA GOOGLE SHEETS
 ══════════════════════════════════════════════════════════════ */
 const CONFIG = {
-  // Enlace directo de exportación de Google Sheets
-  EXCEL_URL: "https://docs.google.com/spreadsheets/d/1I-ZBwnY3P37HsAL5ZnimHopBZPP683gyj21YQRl9YeI/export?format=xlsx",
+  // Enlace directo de lectura de tu Google Sheets
+  SHEETS_URL: "https://docs.google.com/spreadsheets/d/1I-ZBwnY3P37HsAL5ZnimHopBZPP683gyj21YQRl9YeI/export?format=xlsx",
 
-  // Cada cuántos minutos verificar si el archivo cambió (0 = desactivado)
+  // Cada cuántos minutos verificar y actualizar los datos (0 = desactivado)
   AUTO_REFRESH_MIN: 5,
 
-  // Nombres (parciales) de las hojas a leer — robusto a emojis y espacios
+  // Nombres (parciales) de las pestañas en tu Google Sheets a leer
   HOJA_BBDD: "BBDD",
   HOJA_OBJETIVOS: "OBJETIVOS EQUIPOS",
 
-  // Objetivos de respaldo si la hoja de objetivos no existe o no se puede leer
+  // Objetivos de respaldo si la pestaña de objetivos no existe o no se puede leer
   OBJETIVOS_FALLBACK: {
     "Gpon Elite": 50, "Terreno": 50, "Narda Fuentes": 20, "Sandra Diaz": 10,
     "Ricardo Panta": 15, "Walter Salcedo": 15, "Benjamin Acevedo": 10, "Barbara Indriago": 5
@@ -438,7 +438,7 @@ const fmtSoles = n => "S/ " + n.toLocaleString("es-PE",{minimumFractionDigits:0,
 const pct = n => (n*100).toFixed(0) + "%";
 
 /* ══════════════════════════════════════════════════════════════
-   3. CARGA Y PARSEO DEL EXCEL (SheetJS)
+   3. CONEXIÓN Y LECTURA DE GOOGLE SHEETS
 ══════════════════════════════════════════════════════════════ */
 async function cargarDatos(mostrarToast = false){
   const btn = $("btn-actualizar");
@@ -446,10 +446,10 @@ async function cargarDatos(mostrarToast = false){
   $("estado-texto").textContent = "Leyendo datos desde Google Sheets…";
   $("error-banner").style.display = "none";
   try{
-    // Cache-buster para obligar a descargar la versión más reciente
-    const url = CONFIG.EXCEL_URL + (CONFIG.EXCEL_URL.includes("?") ? "&" : "?") + "t=" + Date.now();
+    // Forzamos a que traiga la versión más reciente agregando el Timestamp
+    const url = CONFIG.SHEETS_URL + "&t=" + Date.now();
     const resp = await fetch(url, { cache:"no-store" });
-    if(!resp.ok) throw new Error(`El documento no es público o la URL falló (Código: ${resp.status}). Asegúrate de compartir el Google Sheets como "Cualquier persona con el enlace".`);
+    if(!resp.ok) throw new Error(`Google Sheets denegó el acceso (Código: ${resp.status}). Asegúrate de compartir tu hoja como "Cualquier usuario con el enlace" (Lector).`);
 
     const buf = await resp.arrayBuffer();
     const wb = XLSX.read(buf, { cellDates:true });
@@ -468,22 +468,22 @@ async function cargarDatos(mostrarToast = false){
     console.error(err);
     $("estado-texto").textContent = "Error de conexión";
     const b = $("error-banner");
-    b.textContent = "⚠ No se pudo cargar el archivo: " + err.message;
+    b.textContent = "⚠ No se pudo cargar la hoja de cálculo: " + err.message;
     b.style.display = "block";
   }finally{
     btn.disabled = false;
   }
 }
 
-/* Localiza una hoja por fragmento de nombre (ignora emojis y mayúsculas) */
+/* Localiza una pestaña por fragmento de nombre */
 function buscarHoja(wb, fragmento){
   return wb.SheetNames.find(n => n.toUpperCase().includes(fragmento.toUpperCase()));
 }
 
-/* Lee la hoja BBDD mapeando columnas POR ENCABEZADO */
+/* Extrae los datos de la pestaña BBDD mapeando las columnas por sus cabeceras */
 function parsearBBDD(wb){
   const nombre = buscarHoja(wb, CONFIG.HOJA_BBDD);
-  if(!nombre) throw new Error(`No se encontró la hoja "${CONFIG.HOJA_BBDD}" en el archivo.`);
+  if(!nombre) throw new Error(`No se encontró la pestaña "${CONFIG.HOJA_BBDD}" en Google Sheets.`);
   const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header:1, defval:null });
   const header = filas[0].map(h => h == null ? "" : String(h).trim().toUpperCase());
   const col = frag => header.findIndex(h => h.includes(frag));
@@ -494,11 +494,11 @@ function parsearBBDD(wb){
     access: col("ACCESS"),      fechaIngreso: col("FECHA DE INGRESO"),
     estado: col("ESTADO"),      fechaAdm: col("FECHA DE ADMISION"),
   };
-  if(idx.asesor < 0 || idx.estado < 0) throw new Error("La hoja BBDD no tiene las columnas ASESOR / ESTADO esperadas.");
+  if(idx.asesor < 0 || idx.estado < 0) throw new Error("La pestaña BBDD no tiene las columnas ASESOR / ESTADO esperadas.");
 
   const toDate = v => v instanceof Date ? v : null;
   state.registros = filas.slice(1)
-    .filter(f => f[idx.asesor] && f[idx.estado])            // solo filas con datos reales
+    .filter(f => f[idx.asesor] && f[idx.estado])            // solo extrae filas con datos
     .map(f => ({
       mes:        String(f[idx.mes] || "").trim().toLowerCase(),
       gestor:     String(f[idx.gestor] || "—").trim(),
@@ -515,11 +515,11 @@ function parsearBBDD(wb){
     }));
 }
 
-/* Lee los objetivos mensuales por equipo desde la hoja 🎯 OBJETIVOS EQUIPOS. */
+/* Lee los objetivos mensuales por equipo desde la pestaña 🎯 OBJETIVOS EQUIPOS */
 function parsearObjetivos(wb){
   state.objetivos = { ...CONFIG.OBJETIVOS_FALLBACK };
   const nombre = buscarHoja(wb, CONFIG.HOJA_OBJETIVOS);
-  if(!nombre) return; // usa el fallback
+  if(!nombre) return; 
   try{
     const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header:1, defval:null });
     const leidos = {};
@@ -530,10 +530,10 @@ function parsearObjetivos(wb){
       }
     }
     if(Object.keys(leidos).length) state.objetivos = leidos;
-  }catch(e){ console.warn("No se pudieron leer objetivos, se usa el fallback.", e); }
+  }catch(e){ console.warn("No se pudieron leer objetivos de la pestaña, usando fallback.", e); }
 }
 
-/* Determina el mes del reporte a partir de la fecha máxima de ingreso de carpeta */
+/* Calcula el mes evaluado basado en las fechas registradas */
 function detectarMes(){
   const fechas = state.registros.map(r => r.fechaIngreso).filter(Boolean);
   const ref = fechas.length ? new Date(Math.max(...fechas)) : new Date();
@@ -547,7 +547,7 @@ function detectarMes(){
 }
 
 /* ══════════════════════════════════════════════════════════════
-   4. SLICERS (filtros multi-selección con casillas, en cascada)
+   4. SLICERS (Filtros en cascada)
 ══════════════════════════════════════════════════════════════ */
 const SLICERS = [
   { id:"sl-gestor",     campo:"gestor" },
@@ -602,7 +602,7 @@ function construirSlicers(){
 }
 
 /* ══════════════════════════════════════════════════════════════
-   5. CÁLCULOS: KPIs y PROYECCIÓN
+   5. LÓGICA DE KPI's Y PROYECCIONES
 ══════════════════════════════════════════════════════════════ */
 const esValida = r => CONFIG.ESTADOS_VALIDOS.includes(r.estado);
 const esAnulada = r => CONFIG.ESTADOS_ANULADOS.includes(r.estado);
@@ -673,7 +673,7 @@ function agruparPor(regs, clave){
 }
 
 /* ══════════════════════════════════════════════════════════════
-   6. SISTEMA DE PESTAÑAS
+   6. RENDER DE INTERFAZ Y PESTAÑAS
 ══════════════════════════════════════════════════════════════ */
 const TABS = {
   dashboard:  () => { const r = registrosFiltrados(); renderKPIs(r); renderEstados(r); renderGestores(r); renderEvolucionMini(r); },
@@ -694,15 +694,12 @@ function activarTab(nombre){
 }
 function renderTab(){ if(state.registros.length) TABS[state.tabActiva](); }
 
-/* ══════════════════════════════════════════════════════════════
-   7. RENDERIZADO
-══════════════════════════════════════════════════════════════ */
 Chart.defaults.color = "#6E7899";
 Chart.defaults.borderColor = "#E4E8F4";
 Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
 Chart.defaults.plugins.legend.labels.boxWidth = 14;
 
-/* ---------- PESTAÑA DASHBOARD ---------- */
+/* ---------- DASHBOARD ---------- */
 function renderKPIs(regs){
   const k = calcularKPIs(regs);
   const proy = calcularProyeccion(regs);
@@ -769,7 +766,7 @@ function renderEvolucionMini(regs){
   dibujarEvolucion("ch-evolucion-mini", proy, obj);
 }
 
-/* ---------- PESTAÑA BBDD ---------- */
+/* ---------- BBDD ---------- */
 const COLUMNAS = [
   { k:"fechaIngreso", t:"F. Ingreso", f:r => r.fechaIngreso ? r.fechaIngreso.toLocaleDateString("es-PE") : "—" },
   { k:"gestor", t:"Gestor" },
@@ -816,7 +813,7 @@ function renderTabla(regs){
   ).join("");
 }
 
-/* ---------- PESTAÑA SUPERVISOR ---------- */
+/* ---------- SUPERVISOR ---------- */
 function renderEquipos(regs){
   const grupos = agruparPor(regs, "supervisor");
   dibujar("ch-equipos", {
@@ -856,7 +853,7 @@ function renderTablaSupervisores(regs){
   $("tabla-supervisores").innerHTML = grupos.map(g => fila(g)).join("") + fila(tot, true);
 }
 
-/* ---------- PESTAÑA OBJETIVOS ---------- */
+/* ---------- OBJETIVOS ---------- */
 function renderObjetivos(regs){
   const grupos = agruparPor(regs, "supervisor");
   const porEquipo = new Map(grupos.map(g => [g.nombre, g]));
@@ -914,7 +911,7 @@ function renderObjetivos(regs){
   });
 }
 
-/* ---------- PESTAÑA AVANCE ---------- */
+/* ---------- AVANCE ---------- */
 function renderAvanceEquipos(regs){
   const grupos = agruparPor(regs, "supervisor");
   $("avance-equipos").innerHTML = grupos.map(g => {
@@ -969,7 +966,7 @@ function renderAsesores(regs){
   });
 }
 
-/* ---------- PESTAÑA PROYECCIÓN ---------- */
+/* ---------- PROYECCIÓN ---------- */
 function renderProyeccionTab(regs){
   const proy = calcularProyeccion(regs);
   const obj = objetivoActual();
@@ -1032,20 +1029,15 @@ function toast(msg){
 }
 
 /* ══════════════════════════════════════════════════════════════
-   8. ACTUALIZACIÓN AUTOMÁTICA
+   7. ACTUALIZACIÓN AUTOMÁTICA Y EVENTOS
 ══════════════════════════════════════════════════════════════ */
 async function verificarCambios(){
-  // Como Google Sheets no devuelve un ETag predecible de la misma forma que Github,
-  // ejecutamos una recarga limpia cada cierto tiempo.
   try{
-    toast("⟳ Actualizando datos desde Google Sheets...");
+    toast("⟳ Consultando Google Sheets por actualizaciones...");
     await cargarDatos(false);
-  }catch(e){ /* silencioso: reintenta en el próximo ciclo */ }
+  }catch(e){ /* Silencioso en fondo */ }
 }
 
-/* ══════════════════════════════════════════════════════════════
-   9. EVENTOS E INICIO
-══════════════════════════════════════════════════════════════ */
 document.querySelectorAll("nav.tabs button").forEach(b =>
   b.addEventListener("click", () => activarTab(b.dataset.tab)));
 
@@ -1056,6 +1048,7 @@ $("btn-limpiar").addEventListener("click", () => {
 $("btn-actualizar").addEventListener("click", () => cargarDatos(true));
 $("buscador").addEventListener("input", () => renderTabla(registrosFiltrados()));
 
+// Iniciar
 cargarDatos();
 if(CONFIG.AUTO_REFRESH_MIN > 0) setInterval(verificarCambios, CONFIG.AUTO_REFRESH_MIN * 60 * 1000);
 </script>
