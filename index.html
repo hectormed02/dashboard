@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard GPON B2B — Entel Perú</title>
+
+<!-- ============================================================
+     LIBRERÍAS EXTERNAS (CDN)
+     - SheetJS: lee el .xlsx directamente desde GitHub RAW
+     - Chart.js: gráficos interactivos
+============================================================ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   SISTEMA DE DISEÑO — colores de marca Entel Perú
+   (muestreados del logotipo oficial)
+============================================================ */
+:root{
+  --entel-navy:   #001780;   /* azul Entel — dato principal */
+  --entel-navy-2: #2A44C8;   /* azul secundario para series */
+  --entel-orange: #FF3D00;   /* naranja Entel — acento / real */
+  --entel-orange-soft:#FFE3D9;
+  --bg:      #EEF1F7;        /* fondo tipo Power BI */
+  --card:    #FFFFFF;        /* paneles */
+  --line:    #DEE3F0;        /* bordes */
+  --ink:     #1B2340;        /* texto principal */
+  --ink-dim: #6E7899;        /* texto secundario */
+  --green:   #0E9F6E;        /* válidas / cumplido */
+  --amber:   #F59E0B;        /* en proceso */
+  --red:     #E02424;        /* anuladas / riesgo */
+  --font-brand:"Nunito","Segoe UI",sans-serif;
+  --font-body:"Segoe UI",system-ui,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:13.5px}
+
+/* ---------- Cabecera con marca Entel ---------- */
+header{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:12px 22px;background:var(--card);
+  border-bottom:3px solid var(--entel-orange);
+  position:sticky;top:0;z-index:60;box-shadow:0 1px 6px rgba(0,23,128,.08);
+}
+.logo{font-family:var(--font-brand);font-weight:900;font-size:30px;line-height:1;user-select:none}
+.logo .e{color:var(--entel-navy)}
+.logo .p{color:var(--entel-orange)}
+.titulo{font-family:var(--font-brand);font-weight:800;font-size:17px;color:var(--entel-navy);letter-spacing:.3px}
+.titulo small{display:block;font-weight:600;font-size:11px;color:var(--ink-dim);letter-spacing:1px}
+.badge-mes{
+  background:var(--entel-navy);color:#fff;border-radius:16px;
+  padding:5px 16px;font-size:11.5px;font-weight:700;letter-spacing:1px;
+}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#estado-datos{font-size:12px;color:var(--ink-dim)}
+#estado-datos .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:6px;animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.3}}
+button.btn{
+  background:var(--entel-orange);border:none;color:#fff;font-weight:700;
+  padding:9px 18px;border-radius:8px;cursor:pointer;font-size:13px;
+  font-family:var(--font-brand);transition:filter .15s;
+}
+button.btn:hover{filter:brightness(1.1)}
+button.btn:disabled{opacity:.5;cursor:wait}
+
+#error-banner{
+  display:none;margin:14px 22px 0;padding:13px 18px;border-radius:10px;
+  background:#FDE8E8;border:1px solid var(--red);color:#9B1C1C;font-size:13px;
+}
+
+/* ---------- Barra de pestañas ---------- */
+nav.tabs{
+  display:flex;gap:6px;flex-wrap:wrap;
+  padding:10px 22px 0;background:var(--card);
+  border-bottom:1.5px solid var(--line);
+  position:sticky;top:63px;z-index:55;
+}
+nav.tabs button{
+  background:transparent;border:none;cursor:pointer;
+  font-family:var(--font-brand);font-weight:800;font-size:13px;letter-spacing:.4px;
+  color:var(--ink-dim);padding:10px 18px 12px;border-radius:10px 10px 0 0;
+  border-bottom:3px solid transparent;transition:color .15s, background .15s;
+}
+nav.tabs button:hover{color:var(--entel-navy);background:#F4F6FC}
+nav.tabs button.activa{
+  color:var(--entel-navy);border-bottom-color:var(--entel-orange);background:#F4F6FC;
+}
+
+/* ---------- Layout: sidebar de filtros + contenido ---------- */
+.layout{display:flex;align-items:flex-start;gap:16px;padding:16px 22px 50px;max-width:1600px;margin:0 auto}
+aside{
+  width:225px;flex-shrink:0;position:sticky;top:126px;
+  display:flex;flex-direction:column;gap:12px;
+  max-height:calc(100vh - 146px);overflow:auto;
+}
+.slicer{
+  background:var(--card);border:1.5px solid var(--entel-navy);border-radius:10px;
+  padding:10px 12px;
+}
+.slicer h4{
+  font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;
+  color:var(--entel-navy);margin-bottom:8px;font-family:var(--font-brand);
+  display:flex;justify-content:space-between;align-items:center;
+}
+.slicer h4 .limpiar{font-size:10px;color:var(--entel-orange);cursor:pointer;font-weight:700;text-transform:none;display:none}
+.slicer.activo h4 .limpiar{display:inline}
+.slicer .opciones{display:flex;flex-direction:column;gap:2px;max-height:180px;overflow:auto}
+.opcion{
+  display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;
+  cursor:pointer;font-size:12.5px;color:var(--ink);
+}
+.opcion:hover{background:var(--entel-orange-soft)}
+.opcion .check{
+  width:14px;height:14px;flex-shrink:0;border:1.5px solid var(--ink-dim);border-radius:3px;
+  display:grid;place-items:center;font-size:10px;color:#fff;
+}
+.opcion.sel .check{background:var(--entel-orange);border-color:var(--entel-orange)}
+.opcion .n{margin-left:auto;color:var(--ink-dim);font-size:11px}
+.btn-limpiar-todo{
+  background:var(--card);border:1.5px solid var(--entel-navy);color:var(--entel-navy);
+  padding:9px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:700;font-family:var(--font-brand);
+}
+.btn-limpiar-todo:hover{background:var(--entel-navy);color:#fff}
+
+.contenido{flex:1;min-width:0}
+.tab{display:none;flex-direction:column;gap:14px}
+.tab.visible{display:flex}
+
+/* ---------- KPI cards ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px}
+.kpi{
+  background:var(--card);border:1.5px solid var(--line);border-radius:10px;
+  padding:12px 14px;text-align:center;border-top:4px solid var(--kpi-color,var(--entel-navy));
+  box-shadow:0 1px 4px rgba(0,23,128,.05);
+}
+.kpi .v{font-family:var(--font-brand);font-weight:900;font-size:27px;color:var(--entel-navy);line-height:1.2}
+.kpi .t{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-dim);font-weight:700;margin-top:2px}
+.kpi .s{font-size:11px;color:var(--kpi-color,var(--ink-dim));font-weight:600;margin-top:2px}
+
+/* ---------- Paneles ---------- */
+.fila-2{display:grid;grid-template-columns:1.25fr 1fr;gap:14px}
+.fila-2b{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:950px){.layout{flex-direction:column}aside{width:100%;position:static;flex-direction:row;flex-wrap:wrap;max-height:none}.slicer{flex:1;min-width:180px}.fila-2,.fila-2b{grid-template-columns:1fr}}
+.panel{
+  background:var(--card);border:1.5px solid var(--line);border-radius:10px;padding:14px;
+  box-shadow:0 1px 4px rgba(0,23,128,.05);
+}
+.panel h3{
+  font-family:var(--font-brand);font-size:12px;font-weight:800;letter-spacing:.8px;
+  text-transform:uppercase;color:var(--entel-navy);margin-bottom:10px;
+  padding-bottom:8px;border-bottom:2px solid var(--entel-orange);display:inline-block;
+}
+.panel .nota{font-weight:600;color:var(--ink-dim);text-transform:none;letter-spacing:0}
+.chart-wrap{position:relative;height:290px}
+.chart-wrap.alto{height:360px}
+
+/* ---------- Barras de cumplimiento ---------- */
+.avance-lista{display:flex;flex-direction:column;gap:8px;max-height:400px;overflow:auto}
+.avance-item{cursor:pointer;border-radius:8px;padding:7px 9px;transition:background .15s}
+.avance-item:hover{background:var(--entel-orange-soft)}
+.avance-item .fila{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;font-weight:600}
+.avance-item .fila b{font-family:var(--font-brand);font-weight:800;color:var(--entel-navy)}
+.barra{height:9px;background:#E8ECF6;border-radius:5px;overflow:hidden}
+.barra > div{height:100%;border-radius:5px;background:var(--entel-orange);transition:width .5s}
+.barra > div.ok{background:var(--green)}
+.barra > div.medio{background:var(--amber)}
+
+/* ---------- Tablas ---------- */
+.tabla-controles{display:flex;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.tabla-controles input{
+  background:#fff;border:1.5px solid var(--line);border-radius:8px;
+  color:var(--ink);padding:9px 14px;width:320px;max-width:100%;font-size:13px;
+}
+.tabla-controles input:focus{outline:2px solid var(--entel-orange)}
+.tabla-controles .conteo{font-size:12px;color:var(--ink-dim);font-weight:600}
+.tabla-scroll{overflow:auto;max-height:560px;border:1.5px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff}
+table.ancha{min-width:1050px}
+thead th{
+  position:sticky;top:0;background:var(--entel-navy);color:#fff;
+  text-align:left;padding:10px 12px;font-size:11px;text-transform:uppercase;
+  letter-spacing:.5px;user-select:none;white-space:nowrap;z-index:2;
+  font-family:var(--font-brand);font-weight:800;
+}
+th.ordenable{cursor:pointer}
+th.ordenable:hover{background:var(--entel-navy-2)}
+th.num, td.num{text-align:right}
+tbody td{padding:8px 12px;border-top:1px solid var(--line);white-space:nowrap}
+tbody tr:nth-child(even){background:#F7F9FD}
+tbody tr:hover{background:var(--entel-orange-soft)}
+tbody tr.total{background:#EDF0FA;font-weight:700}
+tbody tr.total td{border-top:2px solid var(--entel-navy)}
+.estado-pill{padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;display:inline-block}
+.mini-barra{display:inline-block;vertical-align:middle;width:90px;height:8px;background:#E8ECF6;border-radius:4px;overflow:hidden;margin-right:8px}
+.mini-barra > div{height:100%;border-radius:4px}
+
+/* ---------- Toast ---------- */
+#toast{
+  position:fixed;bottom:24px;right:24px;background:var(--entel-navy);color:#fff;
+  border-radius:10px;padding:12px 18px;font-size:13px;display:none;z-index:100;
+  box-shadow:0 8px 24px rgba(0,23,128,.35);
+}
+footer{text-align:center;color:var(--ink-dim);font-size:11px;padding:18px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="e">e</span><span class="p">)</span></div>
+  <div class="titulo">DASHBOARD GPON B2B<small>VENTAS · PIPELINE · PROYECCIÓN</small></div>
+  <span class="badge-mes" id="badge-mes">Cargando…</span>
+  <div class="header-right">
+    <span id="estado-datos"><span class="dot"></span><span id="estado-texto">Conectando a GitHub…</span></span>
+    <button class="btn" id="btn-actualizar">⟳ Actualizar datos</button>
+  </div>
+</header>
+
+<!-- ============ PESTAÑAS ============ -->
+<nav class="tabs" id="tabs">
+  <button data-tab="dashboard" class="activa">📊 Dashboard</button>
+  <button data-tab="bbdd">🗂 BBDD</button>
+  <button data-tab="supervisor">👥 Supervisor</button>
+  <button data-tab="objetivos">🎯 Objetivos</button>
+  <button data-tab="avance">📈 Avance</button>
+  <button data-tab="proyeccion">🔮 Proyección</button>
+</nav>
+
+<div id="error-banner"></div>
+
+<div class="layout">
+
+  <!-- ============ SIDEBAR DE FILTROS (aplica a todas las pestañas) ============ -->
+  <aside>
+    <div class="slicer" id="sl-gestor">
+      <h4>Gestor <span class="limpiar">✕ limpiar</span></h4>
+      <div class="opciones"></div>
+    </div>
+    <div class="slicer" id="sl-supervisor">
+      <h4>Equipo / Supervisor <span class="limpiar">✕ limpiar</span></h4>
+      <div class="opciones"></div>
+    </div>
+    <div class="slicer" id="sl-asesor">
+      <h4>Asesor <span class="limpiar">✕ limpiar</span></h4>
+      <div class="opciones"></div>
+    </div>
+    <div class="slicer" id="sl-estado">
+      <h4>Estado <span class="limpiar">✕ limpiar</span></h4>
+      <div class="opciones"></div>
+    </div>
+    <button class="btn-limpiar-todo" id="btn-limpiar">Limpiar todos los filtros</button>
+  </aside>
+
+  <!-- ============ CONTENIDO POR PESTAÑA ============ -->
+  <div class="contenido">
+
+    <!-- ── PESTAÑA 1: DASHBOARD (resumen ejecutivo) ── -->
+    <section class="tab visible" id="tab-dashboard">
+      <div class="kpis" id="kpis"></div>
+      <div class="fila-2b">
+        <div class="panel">
+          <h3>Ventas por estado</h3>
+          <div class="chart-wrap alto"><canvas id="ch-estados"></canvas></div>
+        </div>
+        <div class="panel">
+          <h3>Avance por gestor</h3>
+          <div class="chart-wrap alto"><canvas id="ch-gestores"></canvas></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Evolución del mes <span class="nota">— ventas válidas acumuladas vs. objetivo</span></h3>
+        <div class="chart-wrap"><canvas id="ch-evolucion-mini"></canvas></div>
+      </div>
+    </section>
+
+    <!-- ── PESTAÑA 2: BBDD (tabla completa con filtros) ── -->
+    <section class="tab" id="tab-bbdd">
+      <div class="panel">
+        <h3>Base de datos de ventas <span class="nota">— usa los filtros laterales o el buscador</span></h3>
+        <div class="tabla-controles">
+          <input type="search" id="buscador" placeholder="Buscar por asesor, cliente, RUC, plan, estado…">
+          <span class="conteo" id="conteo-tabla"></span>
+        </div>
+        <div class="tabla-scroll">
+          <table class="ancha">
+            <thead><tr id="tabla-head"></tr></thead>
+            <tbody id="tabla-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PESTAÑA 3: SUPERVISOR (desglose por equipo) ── -->
+    <section class="tab" id="tab-supervisor">
+      <div class="panel">
+        <h3>Real vs. objetivo por equipo <span class="nota">— válidas · en proceso · ♦ objetivo</span></h3>
+        <div class="chart-wrap alto"><canvas id="ch-equipos"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>Resumen por supervisor / equipo</h3>
+        <div class="tabla-scroll">
+          <table>
+            <thead><tr>
+              <th>Equipo</th><th class="num">Carpetas</th><th class="num">Válidas</th>
+              <th class="num">En proceso</th><th class="num">Anuladas</th>
+              <th class="num">Conv %</th><th class="num">ACCESS</th>
+              <th class="num">Objetivo</th><th class="num">Cumplimiento</th>
+            </tr></thead>
+            <tbody id="tabla-supervisores"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PESTAÑA 4: OBJETIVOS (leídos del Excel) ── -->
+    <section class="tab" id="tab-objetivos">
+      <div class="kpis" id="kpis-objetivos"></div>
+      <div class="panel">
+        <h3>Objetivos mensuales por equipo <span class="nota">— leídos de la hoja 🎯 OBJETIVOS EQUIPOS</span></h3>
+        <div class="tabla-scroll">
+          <table>
+            <thead><tr>
+              <th>Equipo</th><th class="num">Objetivo</th><th class="num">Real (válidas)</th>
+              <th class="num">Falta</th><th>Avance</th><th class="num">Proyección</th><th class="num">% Proyectado</th>
+            </tr></thead>
+            <tbody id="tabla-objetivos"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Objetivo vs. real</h3>
+        <div class="chart-wrap alto"><canvas id="ch-objetivos"></canvas></div>
+      </div>
+    </section>
+
+    <!-- ── PESTAÑA 5: AVANCE (equipos, gestores y asesores) ── -->
+    <section class="tab" id="tab-avance">
+      <div class="fila-2">
+        <div class="panel">
+          <h3>% Cumplimiento por equipo <span class="nota">(clic para filtrar)</span></h3>
+          <div class="avance-lista" id="avance-equipos"></div>
+        </div>
+        <div class="panel">
+          <h3>Conversión por equipo <span class="nota">— válidas / total</span></h3>
+          <div class="chart-wrap alto"><canvas id="ch-conversion"></canvas></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Ranking de asesores <span class="nota">— válidas · en proceso · anuladas</span></h3>
+        <div class="chart-wrap" id="wrap-asesores" style="height:420px"><canvas id="ch-asesores"></canvas></div>
+      </div>
+    </section>
+
+    <!-- ── PESTAÑA 6: PROYECCIÓN ── -->
+    <section class="tab" id="tab-proyeccion">
+      <div class="kpis" id="kpis-proyeccion"></div>
+      <div class="panel">
+        <h3>Avance acumulado y proyección de cierre <span class="nota">— método run-rate sobre ventas válidas</span></h3>
+        <div class="chart-wrap alto"><canvas id="ch-proyeccion"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>Proyección por equipo</h3>
+        <div class="tabla-scroll">
+          <table>
+            <thead><tr>
+              <th>Equipo</th><th class="num">Real actual</th><th class="num">Ritmo (ventas/día)</th>
+              <th class="num">Proyección fin de mes</th><th class="num">Objetivo</th><th class="num">% Proyectado</th>
+            </tr></thead>
+            <tbody id="tabla-proyeccion"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+<footer>Dashboard GPON B2B · Entel Perú · Datos en vivo desde GitHub · Última lectura: <span id="ultima-lectura">—</span></footer>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   1. CONFIGURACIÓN — lo único que necesitas editar
+══════════════════════════════════════════════════════════════ */
+const CONFIG = {
+  // URL RAW de tu Excel en GitHub. Formato:
+  // https://raw.githubusercontent.com/USUARIO/REPO/main/RUTA/ARCHIVO.xlsx
+  EXCEL_URL: "https://raw.githubusercontent.com/TU_USUARIO/TU_REPO/main/REPORTE_GPON.xlsx",
+
+  // Cada cuántos minutos verificar si el archivo cambió en GitHub (0 = desactivado)
+  AUTO_REFRESH_MIN: 5,
+
+  // Nombres (parciales) de las hojas a leer — robusto a emojis y espacios
+  HOJA_BBDD: "BBDD",
+  HOJA_OBJETIVOS: "OBJETIVOS EQUIPOS",
+
+  // Objetivos de respaldo si la hoja de objetivos no existe o no se puede leer
+  OBJETIVOS_FALLBACK: {
+    "Gpon Elite": 50, "Terreno": 50, "Narda Fuentes": 20, "Sandra Diaz": 10,
+    "Ricardo Panta": 15, "Walter Salcedo": 15, "Benjamin Acevedo": 10, "Barbara Indriago": 5
+  },
+
+  // Estados que cuentan como venta válida (suman ACCESS y conversión)
+  ESTADOS_VALIDOS: ["ADMITIDA", "INSTALADO"],
+  // Estados que se excluyen de todo KPI
+  ESTADOS_ANULADOS: ["ANULADO"],
+};
+
+/* Paleta de marca Entel (muestreada del logo) */
+const ENTEL = { navy:"#001780", navy2:"#2A44C8", orange:"#FF3D00", green:"#0E9F6E", amber:"#F59E0B", red:"#E02424" };
+
+/* Colores por estado del pipeline (sobre fondo claro) */
+const COLOR_ESTADO = {
+  "ADMITIDA":ENTEL.navy, "INSTALADO":ENTEL.navy2, "ANULADO":ENTEL.red,
+  "PROSPECTO":ENTEL.amber, "PENDIENTE PSI":"#5A76E8", "PENDIENTE SAF":"#5A76E8",
+  "SAF ENVIADA":"#8B6FE8", "ANEXOS ENVIADOS":"#8B6FE8",
+  "PENDIENTE DE INST.":ENTEL.orange, "OBSERVADO":"#D9640A", "DEUDA":"#8C1D1D"
+};
+const colorEstado = e => COLOR_ESTADO[e] || "#9AA4C4";
+
+/* ══════════════════════════════════════════════════════════════
+   2. ESTADO GLOBAL
+   Filtros multi-selección (estilo slicer Power BI):
+   un Set vacío significa "todos".
+══════════════════════════════════════════════════════════════ */
+const state = {
+  registros: [],
+  objetivos: {},
+  mesReporte: null,
+  filtros: { gestor:new Set(), supervisor:new Set(), asesor:new Set(), estado:new Set() },
+  orden: { col:"fechaIngreso", asc:false },
+  tabActiva: "dashboard",
+  etag: null,
+  charts: {},
+};
+
+const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("es-PE");
+const fmtSoles = n => "S/ " + n.toLocaleString("es-PE",{minimumFractionDigits:0, maximumFractionDigits:0});
+const pct = n => (n*100).toFixed(0) + "%";
+
+/* ══════════════════════════════════════════════════════════════
+   3. CARGA Y PARSEO DEL EXCEL (SheetJS)
+══════════════════════════════════════════════════════════════ */
+async function cargarDatos(mostrarToast = false){
+  const btn = $("btn-actualizar");
+  btn.disabled = true;
+  $("estado-texto").textContent = "Leyendo Excel desde GitHub…";
+  $("error-banner").style.display = "none";
+  try{
+    // Cache-buster: garantiza que GitHub RAW no devuelva una versión en caché
+    const url = CONFIG.EXCEL_URL + (CONFIG.EXCEL_URL.includes("?") ? "&" : "?") + "t=" + Date.now();
+    const resp = await fetch(url, { cache:"no-store" });
+    if(!resp.ok) throw new Error(`GitHub respondió ${resp.status} — verifica que la URL RAW sea correcta y el repo sea público.`);
+    state.etag = resp.headers.get("ETag");
+
+    const buf = await resp.arrayBuffer();
+    const wb = XLSX.read(buf, { cellDates:true });
+
+    parsearBBDD(wb);
+    parsearObjetivos(wb);
+    detectarMes();
+    construirSlicers();
+    renderTab();
+
+    const ahora = new Date().toLocaleTimeString("es-PE");
+    $("estado-texto").textContent = `Datos en vivo · ${state.registros.length} registros`;
+    $("ultima-lectura").textContent = ahora;
+    if(mostrarToast) toast(`✔ Datos actualizados desde GitHub (${ahora})`);
+  }catch(err){
+    console.error(err);
+    $("estado-texto").textContent = "Error de conexión";
+    const b = $("error-banner");
+    b.textContent = "⚠ No se pudo cargar el Excel: " + err.message;
+    b.style.display = "block";
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+/* Localiza una hoja por fragmento de nombre (ignora emojis y mayúsculas) */
+function buscarHoja(wb, fragmento){
+  return wb.SheetNames.find(n => n.toUpperCase().includes(fragmento.toUpperCase()));
+}
+
+/* Lee la hoja BBDD mapeando columnas POR ENCABEZADO (no por posición),
+   así el dashboard sigue funcionando si insertas columnas nuevas. */
+function parsearBBDD(wb){
+  const nombre = buscarHoja(wb, CONFIG.HOJA_BBDD);
+  if(!nombre) throw new Error(`No se encontró la hoja "${CONFIG.HOJA_BBDD}" en el archivo.`);
+  const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header:1, defval:null });
+  const header = filas[0].map(h => h == null ? "" : String(h).trim().toUpperCase());
+  const col = frag => header.findIndex(h => h.includes(frag));
+  const idx = {
+    mes: col("MES DE VENTA"),   gestor: col("GESTOR"),        supervisor: col("SUPERVISOR"),
+    asesor: col("ASESOR"),      ruc: col("RUC"),              razon: col("RAZON SOCIAL"),
+    plan: col("ANCHO BANDA"),   servicio: col("TIPO DE SERVICIO"),
+    access: col("ACCESS"),      fechaIngreso: col("FECHA DE INGRESO"),
+    estado: col("ESTADO"),      fechaAdm: col("FECHA DE ADMISION"),
+  };
+  if(idx.asesor < 0 || idx.estado < 0) throw new Error("La hoja BBDD no tiene las columnas ASESOR / ESTADO esperadas.");
+
+  const toDate = v => v instanceof Date ? v : null;
+  state.registros = filas.slice(1)
+    .filter(f => f[idx.asesor] && f[idx.estado])            // solo filas con datos reales
+    .map(f => ({
+      mes:        String(f[idx.mes] || "").trim().toLowerCase(),
+      gestor:     String(f[idx.gestor] || "—").trim(),
+      supervisor: String(f[idx.supervisor] || "—").trim(),
+      asesor:     String(f[idx.asesor] || "—").trim(),
+      ruc:        String(f[idx.ruc] || "").trim(),
+      razon:      String(f[idx.razon] || "").trim(),
+      plan:       String(f[idx.plan] || "").trim(),
+      servicio:   String(f[idx.servicio] || "").trim(),
+      access:     typeof f[idx.access] === "number" ? f[idx.access] : (parseFloat(f[idx.access]) || 0),
+      estado:     String(f[idx.estado] || "").trim().toUpperCase(),
+      fechaIngreso: toDate(f[idx.fechaIngreso]),
+      fechaAdm:     toDate(f[idx.fechaAdm]),
+    }));
+}
+
+/* Lee los objetivos mensuales por equipo desde la hoja 🎯 OBJETIVOS EQUIPOS.
+   Toma la primera columna (equipo) y la segunda (OBJ MENSUAL). */
+function parsearObjetivos(wb){
+  state.objetivos = { ...CONFIG.OBJETIVOS_FALLBACK };
+  const nombre = buscarHoja(wb, CONFIG.HOJA_OBJETIVOS);
+  if(!nombre) return; // usa el fallback
+  try{
+    const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header:1, defval:null });
+    const leidos = {};
+    for(const f of filas){
+      const eq = f[0] ? String(f[0]).trim() : "";
+      if(eq && typeof f[1] === "number" && !eq.toUpperCase().includes("TOTAL") && !eq.toUpperCase().includes("EQUIPO")){
+        leidos[eq] = f[1];
+      }
+    }
+    if(Object.keys(leidos).length) state.objetivos = leidos;
+  }catch(e){ console.warn("No se pudieron leer objetivos, se usa el fallback.", e); }
+}
+
+/* Determina el mes del reporte a partir de la fecha máxima de ingreso de carpeta */
+function detectarMes(){
+  const fechas = state.registros.map(r => r.fechaIngreso).filter(Boolean);
+  const ref = fechas.length ? new Date(Math.max(...fechas)) : new Date();
+  const year = ref.getFullYear(), month = ref.getMonth();
+  state.mesReporte = {
+    year, month,
+    nombre: MESES[month].toUpperCase() + " " + year,
+    dias: new Date(year, month + 1, 0).getDate(),
+  };
+  $("badge-mes").textContent = state.mesReporte.nombre;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   4. SLICERS (filtros multi-selección con casillas, en cascada)
+   Aplican de forma global a TODAS las pestañas.
+══════════════════════════════════════════════════════════════ */
+const SLICERS = [
+  { id:"sl-gestor",     campo:"gestor" },
+  { id:"sl-supervisor", campo:"supervisor" },
+  { id:"sl-asesor",     campo:"asesor" },
+  { id:"sl-estado",     campo:"estado" },
+];
+
+/* Registros que pasan todos los filtros EXCEPTO el del campo indicado
+   (para que cada slicer muestre sus opciones en cascada) */
+function filtrar(exceptoCampo = null){
+  return state.registros.filter(r =>
+    SLICERS.every(s =>
+      s.campo === exceptoCampo ||
+      state.filtros[s.campo].size === 0 ||
+      state.filtros[s.campo].has(r[s.campo])
+    )
+  );
+}
+const registrosFiltrados = () => filtrar(null);
+
+function construirSlicers(){
+  SLICERS.forEach(s => {
+    const base = filtrar(s.campo);
+    const conteo = new Map();
+    base.forEach(r => conteo.set(r[s.campo], (conteo.get(r[s.campo]) || 0) + 1));
+    // conserva selecciones aunque ya no tengan registros visibles
+    state.filtros[s.campo].forEach(v => { if(!conteo.has(v)) conteo.set(v, 0); });
+    const valores = [...conteo.keys()].sort((a,b) => String(a).localeCompare(String(b), "es"));
+
+    const cont = document.querySelector(`#${s.id} .opciones`);
+    cont.innerHTML = valores.map(v => {
+      const sel = state.filtros[s.campo].has(v);
+      return `<div class="opcion ${sel ? "sel" : ""}" data-v="${String(v).replace(/"/g,'&quot;')}">
+        <span class="check">${sel ? "✓" : ""}</span><span>${v}</span><span class="n">${conteo.get(v)}</span>
+      </div>`;
+    }).join("");
+
+    cont.querySelectorAll(".opcion").forEach(el =>
+      el.addEventListener("click", () => {
+        const v = el.dataset.v;
+        const set = state.filtros[s.campo];
+        set.has(v) ? set.delete(v) : set.add(v);
+        construirSlicers(); renderTab();
+      })
+    );
+    const box = $(s.id);
+    box.classList.toggle("activo", state.filtros[s.campo].size > 0);
+    box.querySelector(".limpiar").onclick = (ev) => {
+      ev.stopPropagation();
+      state.filtros[s.campo].clear();
+      construirSlicers(); renderTab();
+    };
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   5. CÁLCULOS: KPIs y PROYECCIÓN
+══════════════════════════════════════════════════════════════ */
+const esValida = r => CONFIG.ESTADOS_VALIDOS.includes(r.estado);
+const esAnulada = r => CONFIG.ESTADOS_ANULADOS.includes(r.estado);
+const enProceso = r => !esValida(r) && !esAnulada(r);
+
+/* Regla oficial del reporte: CONV% = válidas / TOTAL de ventas del asesor/equipo */
+function calcularKPIs(regs){
+  const validas = regs.filter(esValida);
+  return {
+    total: regs.length,
+    validas: validas.length,
+    proceso: regs.filter(enProceso).length,
+    anuladas: regs.filter(esAnulada).length,
+    access: validas.reduce((s,r) => s + r.access, 0),
+    conv: regs.length ? validas.length / regs.length : 0,
+  };
+}
+
+/* Objetivo aplicable según el filtro activo:
+   - sin filtros de equipo/asesor → suma de todos los objetivos
+   - equipos seleccionados → suma de los objetivos de esos equipos
+   - asesores seleccionados → no hay objetivo individual en la hoja: se omite */
+function objetivoActual(){
+  const f = state.filtros;
+  if(f.asesor.size) return null;
+  if(f.supervisor.size)
+    return [...f.supervisor].reduce((s,e) => s + (state.objetivos[e] || 0), 0) || null;
+  if(f.gestor.size){
+    const equipos = new Set(state.registros.filter(r => f.gestor.has(r.gestor)).map(r => r.supervisor));
+    return [...equipos].reduce((s,e) => s + (state.objetivos[e] || 0), 0) || null;
+  }
+  return Object.values(state.objetivos).reduce((a,b) => a+b, 0);
+}
+
+/* Serie acumulada de ventas válidas por día del mes + proyección.
+   Método run-rate: ritmo diario promedio hasta la fecha de corte
+   (HOY si el mes sigue abierto; el último día si ya cerró).
+   proyección = ritmo_diario × días_del_mes */
+function calcularProyeccion(regs){
+  const { year, month, dias } = state.mesReporte;
+  const hoy = new Date();
+  const mesAbierto = hoy.getFullYear() === year && hoy.getMonth() === month;
+  const diaCorte = mesAbierto ? hoy.getDate() : dias;
+
+  const porDia = new Array(dias + 1).fill(0);
+  regs.filter(esValida).forEach(r => {
+    const f = r.fechaIngreso;
+    const d = (f && f.getFullYear() === year && f.getMonth() === month) ? f.getDate() : 1;
+    porDia[d]++;
+  });
+
+  let acum = 0;
+  const serieReal = [];
+  for(let d = 1; d <= dias; d++){
+    acum += porDia[d];
+    serieReal.push(d <= diaCorte ? acum : null);
+  }
+  const realCorte = serieReal[diaCorte - 1] ?? 0;
+  const ritmo = diaCorte > 0 ? realCorte / diaCorte : 0;
+
+  const serieProy = new Array(dias).fill(null);
+  for(let d = diaCorte; d <= dias; d++) serieProy[d-1] = +(ritmo * d).toFixed(1);
+
+  return { dias, diaCorte, mesAbierto, serieReal, serieProy,
+           proyeccionFin: Math.round(ritmo * dias), ritmoDiario: ritmo };
+}
+
+/* Agrupa registros por una clave y calcula KPIs de cada grupo */
+function agruparPor(regs, clave){
+  const mapa = new Map();
+  regs.forEach(r => {
+    if(!mapa.has(r[clave])) mapa.set(r[clave], []);
+    mapa.get(r[clave]).push(r);
+  });
+  return [...mapa.entries()]
+    .map(([nombre, items]) => ({ nombre, items, ...calcularKPIs(items) }))
+    .sort((a,b) => b.validas - a.validas);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   6. SISTEMA DE PESTAÑAS
+   Cada pestaña declara sus funciones de render. Al cambiar de
+   pestaña o de filtro solo se dibuja lo visible (evita que
+   Chart.js renderice lienzos ocultos con tamaño 0).
+══════════════════════════════════════════════════════════════ */
+const TABS = {
+  dashboard:  () => { const r = registrosFiltrados(); renderKPIs(r); renderEstados(r); renderGestores(r); renderEvolucionMini(r); },
+  bbdd:       () => { renderTabla(registrosFiltrados()); },
+  supervisor: () => { const r = registrosFiltrados(); renderEquipos(r); renderTablaSupervisores(r); },
+  objetivos:  () => { const r = registrosFiltrados(); renderObjetivos(r); },
+  avance:     () => { const r = registrosFiltrados(); renderAvanceEquipos(r); renderConversion(r); renderAsesores(r); },
+  proyeccion: () => { const r = registrosFiltrados(); renderProyeccionTab(r); },
+};
+
+function activarTab(nombre){
+  state.tabActiva = nombre;
+  document.querySelectorAll("nav.tabs button").forEach(b =>
+    b.classList.toggle("activa", b.dataset.tab === nombre));
+  document.querySelectorAll(".tab").forEach(t =>
+    t.classList.toggle("visible", t.id === "tab-" + nombre));
+  renderTab();
+}
+function renderTab(){ if(state.registros.length) TABS[state.tabActiva](); }
+
+/* ══════════════════════════════════════════════════════════════
+   7. RENDERIZADO
+══════════════════════════════════════════════════════════════ */
+Chart.defaults.color = "#6E7899";
+Chart.defaults.borderColor = "#E4E8F4";
+Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
+Chart.defaults.plugins.legend.labels.boxWidth = 14;
+
+/* ---------- PESTAÑA DASHBOARD ---------- */
+function renderKPIs(regs){
+  const k = calcularKPIs(regs);
+  const proy = calcularProyeccion(regs);
+  const obj = objetivoActual();
+  const cumpl = obj ? k.validas / obj : null;
+  const cumplProy = obj ? proy.proyeccionFin / obj : null;
+  const cards = [
+    { t:"Ventas registradas", v:fmt(k.total), s:"todas las carpetas", c:ENTEL.navy },
+    { t:"Ventas válidas", v:fmt(k.validas), s:"ADMITIDA + INSTALADO", c:ENTEL.green },
+    { t:"En proceso", v:fmt(k.proceso), s:"pipeline activo", c:ENTEL.amber },
+    { t:"Anuladas", v:fmt(k.anuladas), s:"no suman KPI", c:ENTEL.red },
+    { t:"ACCESS acumulado", v:fmtSoles(k.access), s:"solo ventas válidas", c:ENTEL.orange },
+    { t:"Conversión", v:pct(k.conv), s:"válidas / total", c:ENTEL.navy2 },
+  ];
+  if(obj !== null){
+    cards.push({ t:"Objetivo mensual", v:fmt(obj), s:"cumplimiento: " + pct(cumpl),
+      c: cumpl >= 1 ? ENTEL.green : cumpl >= .7 ? ENTEL.amber : ENTEL.red });
+  }
+  cards.push({
+    t: proy.mesAbierto ? "Proyección fin de mes" : "Cierre del mes",
+    v: fmt(proy.proyeccionFin),
+    s: obj ? "proyectado: " + pct(cumplProy) + " del objetivo" : (proy.ritmoDiario.toFixed(1) + " ventas/día"),
+    c: ENTEL.orange });
+  $("kpis").innerHTML = tarjetas(cards);
+}
+
+function tarjetas(cards){
+  return cards.map(c =>
+    `<div class="kpi" style="--kpi-color:${c.c}"><div class="v">${c.v}</div><div class="t">${c.t}</div><div class="s">${c.s}</div></div>`
+  ).join("");
+}
+
+function renderEstados(regs){
+  const conteo = {};
+  regs.forEach(r => conteo[r.estado] = (conteo[r.estado] || 0) + 1);
+  const entradas = Object.entries(conteo).sort((a,b) => b[1]-a[1]);
+  dibujar("ch-estados", {
+    type:"doughnut",
+    data:{ labels: entradas.map(e => e[0]),
+      datasets:[{ data: entradas.map(e => e[1]), backgroundColor: entradas.map(e => colorEstado(e[0])),
+        borderColor:"#fff", borderWidth:3 }] },
+    options:{ maintainAspectRatio:false, cutout:"60%", plugins:{ legend:{position:"bottom"} } }
+  });
+}
+
+function renderGestores(regs){
+  const grupos = agruparPor(regs, "gestor");
+  dibujar("ch-gestores", {
+    type:"bar",
+    data:{ labels: grupos.map(g => g.nombre),
+      datasets:[
+        { label:"Válidas", data:grupos.map(g => g.validas), backgroundColor:ENTEL.navy, borderRadius:4, stack:"s" },
+        { label:"En proceso", data:grupos.map(g => g.proceso), backgroundColor:ENTEL.amber, borderRadius:4, stack:"s" },
+        { label:"Anuladas", data:grupos.map(g => g.anuladas), backgroundColor:"rgba(224,36,36,.45)", borderRadius:4, stack:"s" },
+      ]},
+    options:{ maintainAspectRatio:false, plugins:{legend:{position:"bottom"}},
+      scales:{ x:{stacked:true}, y:{stacked:true, beginAtZero:true} } }
+  });
+}
+
+function renderEvolucionMini(regs){
+  const proy = calcularProyeccion(regs);
+  const obj = objetivoActual();
+  dibujarEvolucion("ch-evolucion-mini", proy, obj);
+}
+
+/* ---------- PESTAÑA BBDD ---------- */
+const COLUMNAS = [
+  { k:"fechaIngreso", t:"F. Ingreso", f:r => r.fechaIngreso ? r.fechaIngreso.toLocaleDateString("es-PE") : "—" },
+  { k:"gestor", t:"Gestor" },
+  { k:"supervisor", t:"Equipo" },
+  { k:"asesor", t:"Asesor" },
+  { k:"razon", t:"Razón social" },
+  { k:"ruc", t:"RUC" },
+  { k:"plan", t:"Plan" },
+  { k:"servicio", t:"Servicio" },
+  { k:"access", t:"ACCESS", f:r => r.access ? r.access.toFixed(2) : "—" },
+  { k:"fechaAdm", t:"F. Admisión", f:r => r.fechaAdm ? r.fechaAdm.toLocaleDateString("es-PE") : "—" },
+  { k:"estado", t:"Estado", f:r => `<span class="estado-pill" style="background:${colorEstado(r.estado)}1E;color:${colorEstado(r.estado)}">${r.estado}</span>` },
+];
+
+function renderTabla(regs){
+  $("tabla-head").innerHTML = COLUMNAS.map(c =>
+    `<th class="ordenable" data-col="${c.k}">${c.t}${state.orden.col === c.k ? (state.orden.asc ? " ▲" : " ▼") : ""}</th>`
+  ).join("");
+  document.querySelectorAll("#tabla-head th").forEach(th =>
+    th.addEventListener("click", () => {
+      const col = th.dataset.col;
+      if(state.orden.col === col) state.orden.asc = !state.orden.asc;
+      else state.orden = { col, asc:true };
+      renderTabla(registrosFiltrados());
+    })
+  );
+
+  const q = $("buscador").value.trim().toLowerCase();
+  let filas = !q ? regs : regs.filter(r =>
+    [r.asesor, r.razon, r.ruc, r.estado, r.supervisor, r.gestor, r.plan, r.servicio].join(" ").toLowerCase().includes(q)
+  );
+
+  const { col, asc } = state.orden;
+  filas = [...filas].sort((a,b) => {
+    const va = a[col], vb = b[col];
+    if(va == null) return 1; if(vb == null) return -1;
+    const cmp = va instanceof Date ? va - vb : (typeof va === "number" ? va - vb : String(va).localeCompare(String(vb), "es"));
+    return asc ? cmp : -cmp;
+  });
+
+  $("conteo-tabla").textContent = `${filas.length} de ${regs.length} registros`;
+  $("tabla-body").innerHTML = filas.map(r =>
+    "<tr>" + COLUMNAS.map(c => `<td>${c.f ? c.f(r) : (r[c.k] || "—")}</td>`).join("") + "</tr>"
+  ).join("");
+}
+
+/* ---------- PESTAÑA SUPERVISOR ---------- */
+function renderEquipos(regs){
+  const grupos = agruparPor(regs, "supervisor");
+  dibujar("ch-equipos", {
+    type:"bar",
+    data:{ labels: grupos.map(g => g.nombre),
+      datasets:[
+        { label:"Ventas válidas", data:grupos.map(g => g.validas), backgroundColor:ENTEL.navy, borderRadius:4 },
+        { label:"En proceso", data:grupos.map(g => g.proceso), backgroundColor:ENTEL.amber, borderRadius:4 },
+        { label:"Objetivo", data:grupos.map(g => state.objetivos[g.nombre] || 0),
+          type:"line", borderColor:ENTEL.orange, pointBackgroundColor:ENTEL.orange,
+          pointRadius:5, pointStyle:"rectRot", borderWidth:0, showLine:false },
+      ]},
+    options:{ maintainAspectRatio:false, plugins:{legend:{position:"bottom"}},
+      scales:{ y:{beginAtZero:true} } }
+  });
+}
+
+function renderTablaSupervisores(regs){
+  const grupos = agruparPor(regs, "supervisor");
+  const tot = calcularKPIs(regs);
+  const objTotal = grupos.reduce((s,g) => s + (state.objetivos[g.nombre] || 0), 0);
+  const fila = (g, esTotal=false) => {
+    const objetivo = esTotal ? objTotal : (state.objetivos[g.nombre] || null);
+    const p = objetivo ? g.validas / objetivo : null;
+    return `<tr class="${esTotal ? "total" : ""}">
+      <td>${esTotal ? "TOTAL" : g.nombre}</td>
+      <td class="num">${fmt(g.total)}</td>
+      <td class="num" style="color:${ENTEL.green};font-weight:700">${fmt(g.validas)}</td>
+      <td class="num">${fmt(g.proceso)}</td>
+      <td class="num" style="color:${ENTEL.red}">${fmt(g.anuladas)}</td>
+      <td class="num">${pct(g.conv)}</td>
+      <td class="num">${fmtSoles(g.access)}</td>
+      <td class="num">${objetivo ? fmt(objetivo) : "—"}</td>
+      <td class="num" style="font-weight:700;color:${p === null ? "inherit" : p >= 1 ? ENTEL.green : p >= .7 ? ENTEL.amber : ENTEL.red}">${p === null ? "—" : pct(p)}</td>
+    </tr>`;
+  };
+  $("tabla-supervisores").innerHTML = grupos.map(g => fila(g)).join("") + fila(tot, true);
+}
+
+/* ---------- PESTAÑA OBJETIVOS ---------- */
+function renderObjetivos(regs){
+  const grupos = agruparPor(regs, "supervisor");
+  const porEquipo = new Map(grupos.map(g => [g.nombre, g]));
+  // incluye equipos con objetivo aunque no tengan registros visibles
+  const nombres = [...new Set([...Object.keys(state.objetivos), ...porEquipo.keys()])]
+    .sort((a,b) => (state.objetivos[b] || 0) - (state.objetivos[a] || 0));
+
+  let sumObj = 0, sumReal = 0, sumProy = 0;
+  const filasHTML = nombres.map(nombre => {
+    const g = porEquipo.get(nombre) || { validas:0, items:[] };
+    const objetivo = state.objetivos[nombre] || 0;
+    const proy = calcularProyeccion(g.items || []);
+    const p = objetivo ? g.validas / objetivo : null;
+    const pProy = objetivo ? proy.proyeccionFin / objetivo : null;
+    sumObj += objetivo; sumReal += g.validas; sumProy += proy.proyeccionFin;
+    const colorP = p === null ? "#9AA4C4" : p >= 1 ? ENTEL.green : p >= .7 ? ENTEL.amber : ENTEL.red;
+    return `<tr>
+      <td>${nombre}</td>
+      <td class="num">${objetivo ? fmt(objetivo) : "—"}</td>
+      <td class="num" style="color:${ENTEL.green};font-weight:700">${fmt(g.validas)}</td>
+      <td class="num">${objetivo ? fmt(Math.max(objetivo - g.validas, 0)) : "—"}</td>
+      <td><span class="mini-barra"><div style="width:${p === null ? 0 : Math.min(p*100,100)}%;background:${colorP}"></div></span>
+          <b style="color:${colorP}">${p === null ? "—" : pct(p)}</b></td>
+      <td class="num">${fmt(proy.proyeccionFin)}</td>
+      <td class="num" style="font-weight:700;color:${pProy === null ? "inherit" : pProy >= 1 ? ENTEL.green : ENTEL.orange}">${pProy === null ? "—" : pct(pProy)}</td>
+    </tr>`;
+  }).join("");
+
+  const pTot = sumObj ? sumReal / sumObj : null;
+  $("tabla-objetivos").innerHTML = filasHTML + `<tr class="total">
+    <td>TOTAL</td><td class="num">${fmt(sumObj)}</td>
+    <td class="num" style="color:${ENTEL.green}">${fmt(sumReal)}</td>
+    <td class="num">${fmt(Math.max(sumObj - sumReal, 0))}</td>
+    <td><b>${pTot === null ? "—" : pct(pTot)}</b></td>
+    <td class="num">${fmt(sumProy)}</td>
+    <td class="num">${sumObj ? pct(sumProy / sumObj) : "—"}</td>
+  </tr>`;
+
+  $("kpis-objetivos").innerHTML = tarjetas([
+    { t:"Objetivo total", v:fmt(sumObj), s:"suma de equipos visibles", c:ENTEL.navy },
+    { t:"Real (válidas)", v:fmt(sumReal), s:"ADMITIDA + INSTALADO", c:ENTEL.green },
+    { t:"Falta", v:fmt(Math.max(sumObj - sumReal, 0)), s:"para llegar al objetivo", c:ENTEL.orange },
+    { t:"Avance", v:pTot === null ? "—" : pct(pTot), s:"real / objetivo", c: pTot >= 1 ? ENTEL.green : pTot >= .7 ? ENTEL.amber : ENTEL.red },
+  ]);
+
+  // gráfico horizontal objetivo vs real
+  const conObjetivo = nombres.filter(n => state.objetivos[n]);
+  dibujar("ch-objetivos", {
+    type:"bar",
+    data:{ labels: conObjetivo,
+      datasets:[
+        { label:"Real (válidas)", data:conObjetivo.map(n => (porEquipo.get(n) || {validas:0}).validas), backgroundColor:ENTEL.navy, borderRadius:4 },
+        { label:"Objetivo", data:conObjetivo.map(n => state.objetivos[n]), backgroundColor:"rgba(255,61,0,.25)", borderColor:ENTEL.orange, borderWidth:1.5, borderRadius:4 },
+      ]},
+    options:{ indexAxis:"y", maintainAspectRatio:false, plugins:{legend:{position:"bottom"}},
+      scales:{ x:{beginAtZero:true} } }
+  });
+}
+
+/* ---------- PESTAÑA AVANCE ---------- */
+function renderAvanceEquipos(regs){
+  const grupos = agruparPor(regs, "supervisor");
+  $("avance-equipos").innerHTML = grupos.map(g => {
+    const objetivo = state.objetivos[g.nombre];
+    const p = objetivo ? g.validas / objetivo : null;
+    const ancho = p === null ? 0 : Math.min(p*100, 100);
+    const clase = p >= 1 ? "ok" : p >= .7 ? "medio" : "";
+    return `<div class="avance-item" data-equipo="${g.nombre.replace(/"/g,'&quot;')}">
+      <div class="fila"><span>${g.nombre}</span>
+        <b>${g.validas}${objetivo ? " / " + objetivo : ""} ${p !== null ? "· " + pct(p) : ""}</b></div>
+      <div class="barra"><div class="${clase}" style="width:${ancho}%"></div></div>
+    </div>`;
+  }).join("");
+  document.querySelectorAll(".avance-item").forEach(el =>
+    el.addEventListener("click", () => {
+      const eq = el.dataset.equipo;
+      const set = state.filtros.supervisor;
+      set.has(eq) ? set.delete(eq) : set.add(eq);
+      construirSlicers(); renderTab();
+    })
+  );
+}
+
+function renderConversion(regs){
+  const grupos = agruparPor(regs, "supervisor").sort((a,b) => b.conv - a.conv);
+  dibujar("ch-conversion", {
+    type:"bar",
+    data:{ labels: grupos.map(g => g.nombre),
+      datasets:[{ label:"Conversión %", data:grupos.map(g => +(g.conv*100).toFixed(1)),
+        backgroundColor: grupos.map(g => g.conv >= .7 ? ENTEL.green : g.conv >= .5 ? ENTEL.amber : ENTEL.red),
+        borderRadius:4 }]},
+    options:{ maintainAspectRatio:false, plugins:{legend:{display:false},
+        tooltip:{callbacks:{label: c => c.parsed.y + "%"}}},
+      scales:{ y:{beginAtZero:true, max:100, ticks:{callback: v => v + "%"}} } }
+  });
+}
+
+function renderAsesores(regs){
+  const grupos = agruparPor(regs, "asesor");
+  $("wrap-asesores").style.height = Math.max(220, grupos.length * 32 + 90) + "px";
+  dibujar("ch-asesores", {
+    type:"bar",
+    data:{ labels: grupos.map(g => g.nombre),
+      datasets:[
+        { label:"Válidas", data:grupos.map(g => g.validas), backgroundColor:ENTEL.navy, borderRadius:4, stack:"s" },
+        { label:"En proceso", data:grupos.map(g => g.proceso), backgroundColor:ENTEL.amber, borderRadius:4, stack:"s" },
+        { label:"Anuladas", data:grupos.map(g => g.anuladas), backgroundColor:"rgba(224,36,36,.45)", borderRadius:4, stack:"s" },
+      ]},
+    options:{ indexAxis:"y", maintainAspectRatio:false,
+      plugins:{ legend:{position:"bottom"} },
+      scales:{ x:{stacked:true, beginAtZero:true}, y:{stacked:true} } }
+  });
+}
+
+/* ---------- PESTAÑA PROYECCIÓN ---------- */
+function renderProyeccionTab(regs){
+  const proy = calcularProyeccion(regs);
+  const obj = objetivoActual();
+  const k = calcularKPIs(regs);
+
+  $("kpis-proyeccion").innerHTML = tarjetas([
+    { t:"Real al corte (día " + proy.diaCorte + ")", v:fmt(k.validas), s:"ventas válidas", c:ENTEL.navy },
+    { t:"Ritmo diario", v:proy.ritmoDiario.toFixed(2), s:"ventas válidas / día", c:ENTEL.navy2 },
+    { t: proy.mesAbierto ? "Proyección fin de mes" : "Cierre del mes", v:fmt(proy.proyeccionFin), s:"run-rate × " + proy.dias + " días", c:ENTEL.orange },
+    ...(obj ? [{ t:"% Proyectado vs objetivo", v:pct(proy.proyeccionFin / obj), s:"objetivo: " + fmt(obj),
+      c: proy.proyeccionFin / obj >= 1 ? ENTEL.green : ENTEL.red }] : []),
+  ]);
+
+  dibujarEvolucion("ch-proyeccion", proy, obj);
+
+  // tabla de proyección por equipo
+  const grupos = agruparPor(regs, "supervisor");
+  $("tabla-proyeccion").innerHTML = grupos.map(g => {
+    const pg = calcularProyeccion(g.items);
+    const objetivo = state.objetivos[g.nombre] || null;
+    const pProy = objetivo ? pg.proyeccionFin / objetivo : null;
+    return `<tr>
+      <td>${g.nombre}</td>
+      <td class="num" style="color:${ENTEL.green};font-weight:700">${fmt(g.validas)}</td>
+      <td class="num">${pg.ritmoDiario.toFixed(2)}</td>
+      <td class="num" style="font-weight:700">${fmt(pg.proyeccionFin)}</td>
+      <td class="num">${objetivo ? fmt(objetivo) : "—"}</td>
+      <td class="num" style="font-weight:700;color:${pProy === null ? "inherit" : pProy >= 1 ? ENTEL.green : ENTEL.red}">${pProy === null ? "—" : pct(pProy)}</td>
+    </tr>`;
+  }).join("");
+}
+
+/* Gráfico de evolución acumulada + proyección (reutilizado en 2 pestañas) */
+function dibujarEvolucion(canvasId, proy, obj){
+  const labels = Array.from({length: proy.dias}, (_,i) => i+1);
+  const datasets = [
+    { label:"Real acumulado", data:proy.serieReal, borderColor:ENTEL.navy,
+      backgroundColor:"rgba(0,23,128,.08)", fill:true, tension:.25, pointRadius:2, borderWidth:2.5 },
+    { label:"Proyección (run-rate)", data:proy.serieProy, borderColor:ENTEL.orange,
+      borderDash:[7,5], pointRadius:0, borderWidth:2.5, fill:false },
+  ];
+  if(obj) datasets.push({ label:"Objetivo", data:new Array(proy.dias).fill(obj),
+      borderColor:ENTEL.green, borderDash:[2,4], pointRadius:0, borderWidth:1.5, fill:false });
+  dibujar(canvasId, {
+    type:"line",
+    data:{ labels, datasets },
+    options:{ maintainAspectRatio:false, interaction:{mode:"index",intersect:false},
+      plugins:{ legend:{position:"bottom"} },
+      scales:{ x:{title:{display:true,text:"Día del mes"}}, y:{beginAtZero:true} } }
+  });
+}
+
+/* Crea o reemplaza un gráfico Chart.js sin fugas de memoria */
+function dibujar(id, cfg){
+  if(state.charts[id]) state.charts[id].destroy();
+  state.charts[id] = new Chart($(id), cfg);
+}
+
+function toast(msg){
+  const t = $("toast");
+  t.textContent = msg; t.style.display = "block";
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 4000);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   8. ACTUALIZACIÓN AUTOMÁTICA
+   Cada AUTO_REFRESH_MIN minutos se hace una petición ligera (HEAD)
+   y se compara el ETag: si GitHub reporta un archivo distinto,
+   se recargan los datos sin intervención del usuario.
+══════════════════════════════════════════════════════════════ */
+async function verificarCambios(){
+  try{
+    const resp = await fetch(CONFIG.EXCEL_URL + "?t=" + Date.now(), { method:"HEAD", cache:"no-store" });
+    const etag = resp.headers.get("ETag");
+    if(etag && state.etag && etag !== state.etag){
+      toast("⟳ Se detectó una nueva versión del Excel — actualizando…");
+      await cargarDatos(true);
+    }
+  }catch(e){ /* silencioso: reintenta en el próximo ciclo */ }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   9. EVENTOS E INICIO
+══════════════════════════════════════════════════════════════ */
+document.querySelectorAll("nav.tabs button").forEach(b =>
+  b.addEventListener("click", () => activarTab(b.dataset.tab)));
+
+$("btn-limpiar").addEventListener("click", () => {
+  SLICERS.forEach(s => state.filtros[s.campo].clear());
+  construirSlicers(); renderTab();
+});
+$("btn-actualizar").addEventListener("click", () => cargarDatos(true));
+$("buscador").addEventListener("input", () => renderTabla(registrosFiltrados()));
+
+cargarDatos();
+if(CONFIG.AUTO_REFRESH_MIN > 0) setInterval(verificarCambios, CONFIG.AUTO_REFRESH_MIN * 60 * 1000);
+</script>
+</body>
+</html>
